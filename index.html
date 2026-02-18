@@ -249,6 +249,7 @@
                 <div class="nav-label">Growth</div>
                 <div class="nav-item" data-page="books"><span>📚</span> Books</div>
                 <div class="nav-item" data-page="learn"><span>🧠</span> Learn</div>
+                <div class="nav-item" data-page="buy"><span>🛒</span> Buy</div>
             </div>
         </nav>
     </aside>
@@ -277,6 +278,7 @@
                     <div class="dash-card"><div class="dash-card-title">📝 Notes</div><div id="dashNotes"></div></div>
                     <div class="dash-card"><div class="dash-card-title">📚 Books</div><div id="dashBooks"></div></div>
                     <div class="dash-card"><div class="dash-card-title">🧠 Learn</div><div id="dashLearn"></div></div>
+                    <div class="dash-card"><div class="dash-card-title">🛒 Buy</div><div id="dashBuy"></div></div>
                 </div>
             </div>
         </div>
@@ -392,6 +394,31 @@
                 </div>
             </div>
         </div>
+        
+        <!-- BUY -->
+        <div class="page" id="page-buy">
+            <div class="page-header"><div class="header-content"><h1 class="page-title">🛒 Buy</h1></div></div>
+            <div class="page-content">
+                <div class="tabs" id="buyTabs">
+                    <button class="tab active" data-tab="want">🎯 Want</button>
+                    <button class="tab" data-tab="maybe">🤔 Maybe</button>
+                    <button class="tab" data-tab="bought">✅ Bought</button>
+                </div>
+                <div class="card">
+                    <div id="buyContent"></div>
+                    <div class="add-row">
+                        <input type="text" class="add-input" id="buyInput" placeholder="Item name...">
+                        <input type="text" class="add-input" id="buyPriceInput" placeholder="Price (optional)" style="max-width:120px;">
+                        <select class="priority-select" id="buyCategory"></select>
+                        <button class="btn btn-primary" id="addBuyBtn">+ Add</button>
+                    </div>
+                    <div class="add-row" style="margin-top:10px;">
+                        <input type="text" class="add-input" id="newBuyCategoryInput" placeholder="New category..." style="max-width:200px;">
+                        <button class="btn" id="addBuyCategoryBtn" style="background:var(--mint);">+ Category</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </main>
     
     <div class="settings-overlay" id="settingsOverlay"></div>
@@ -465,6 +492,10 @@ if (Array.isArray(learn)) { learn = { categories: ['General'], items: learn.map(
 if (!learn.categories) { learn.categories = ['General']; save('learn', learn); }
 let currentLearnTab = 'read';
 
+let buy = JSON.parse(localStorage.getItem('d-buy')) || { categories: ['General'], items: [] };
+if (!buy.categories) { buy.categories = ['General']; save('buy', buy); }
+let currentBuyTab = 'want';
+
 let currentTaskTab = 'daily';
 let currentBookTab = 'toread';
 let currentFolder = 'all';
@@ -514,6 +545,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
         if (page === 'notes') renderNotes();
         if (page === 'books') renderBooks();
         if (page === 'learn') renderLearn();
+        if (page === 'buy') renderBuy();
     });
 });
 
@@ -684,6 +716,16 @@ function renderDashboard() {
         learnHtml += doItems.map(l => '<div style="padding:4px 0;font-size:0.85rem;">' + esc(l.text) + '</div>').join('');
     }
     document.getElementById('dashLearn').innerHTML = learnHtml || '<p style="color:var(--text-muted);font-size:0.85rem;">Nothing to learn yet</p>';
+    
+    // Buy - want list
+    const wantItems = buy.items.filter(b => b.tab === 'want' && !b.done).slice(0, 4);
+    if (wantItems.length) {
+        document.getElementById('dashBuy').innerHTML = wantItems.map(b => 
+            '<div style="padding:5px 0;font-size:0.85rem;">🎯 ' + esc(b.text) + (b.price ? ' <span style="color:var(--text-muted);">· ' + esc(b.price) + '</span>' : '') + '</div>'
+        ).join('');
+    } else {
+        document.getElementById('dashBuy').innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Nothing to buy yet</p>';
+    }
 }
 
 // Task Tabs
@@ -950,6 +992,98 @@ document.getElementById('addCategoryBtn').addEventListener('click', function() {
 });
 document.getElementById('newCategoryInput').addEventListener('keypress', function(e) { if (e.key === 'Enter') document.getElementById('addCategoryBtn').click(); });
 
+// Buy
+function renderBuyCategories() {
+    const select = document.getElementById('buyCategory');
+    select.innerHTML = buy.categories.map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('');
+}
+
+function renderBuy() {
+    renderBuyCategories();
+    const items = buy.items.filter(t => t.tab === currentBuyTab);
+    const grouped = {};
+    buy.categories.forEach(c => grouped[c] = []);
+    items.forEach(t => {
+        if (!grouped[t.category]) grouped[t.category] = [];
+        grouped[t.category].push(t);
+    });
+    let html = '';
+    buy.categories.forEach(cat => {
+        if (grouped[cat] && grouped[cat].length) {
+            html += '<div class="task-section"><div class="priority-header" style="background:var(--mint);">' + esc(cat) + ' (' + grouped[cat].length + ')</div>';
+            grouped[cat].forEach(t => {
+                const priceStr = t.price ? '<span style="color:var(--text-muted);font-size:0.8rem;"> · ' + esc(t.price) + '</span>' : '';
+                const noteBtn = '<button class="buy-note-btn" title="Add note" style="background:none;border:none;cursor:pointer;opacity:0.5;font-size:0.9rem;">📝</button>';
+                const noteDisplay = t.note ? '<div class="buy-note" style="font-size:0.8rem;color:var(--text-muted);padding:6px 0 0 32px;font-style:italic;">' + esc(t.note) + '</div>' : '';
+                html += '<div class="buy-item" data-id="' + t.id + '" style="background:var(--bg);border-radius:10px;padding:12px;margin-bottom:8px;">';
+                html += '<div style="display:flex;align-items:center;gap:12px;">';
+                html += '<div class="task-checkbox' + (t.done ? ' checked' : '') + '">' + (t.done ? '✓' : '') + '</div>';
+                html += '<div style="flex:1;"><span class="buy-text">' + esc(t.text) + '</span>' + priceStr + '</div>';
+                html += noteBtn;
+                if (currentBuyTab === 'want') html += '<button class="buy-move" data-to="bought" title="Mark bought" style="background:var(--mint);border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">✅</button>';
+                if (currentBuyTab === 'maybe') html += '<button class="buy-move" data-to="want" title="Move to want" style="background:var(--yellow);border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">🎯</button>';
+                html += '<button class="buy-delete" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:1.1rem;">×</button>';
+                html += '</div>' + noteDisplay + '</div>';
+            });
+            html += '</div>';
+        }
+    });
+    const tabLabels = { want: 'want', maybe: 'consider', bought: 'bought' };
+    document.getElementById('buyContent').innerHTML = html || '<p style="color:var(--text-muted);text-align:center;padding:30px;">Nothing to ' + tabLabels[currentBuyTab] + ' yet</p>';
+}
+
+document.getElementById('buyTabs').addEventListener('click', function(e) {
+    if (e.target.classList.contains('tab')) {
+        currentBuyTab = e.target.dataset.tab;
+        document.querySelectorAll('#buyTabs .tab').forEach(t => t.classList.remove('active'));
+        e.target.classList.add('active');
+        renderBuy();
+    }
+});
+
+document.getElementById('buyContent').addEventListener('click', function(e) {
+    const item = e.target.closest('.buy-item');
+    if (!item) return;
+    const id = parseInt(item.dataset.id);
+    if (e.target.classList.contains('task-checkbox')) {
+        const t = buy.items.find(x => x.id === id);
+        if (t) { t.done = !t.done; save('buy', buy); renderBuy(); renderDashboard(); }
+    } else if (e.target.classList.contains('buy-delete')) {
+        buy.items = buy.items.filter(x => x.id !== id);
+        save('buy', buy); renderBuy(); renderDashboard();
+    } else if (e.target.classList.contains('buy-move')) {
+        const to = e.target.dataset.to;
+        const t = buy.items.find(x => x.id === id);
+        if (t) { t.tab = to; save('buy', buy); renderBuy(); renderDashboard(); }
+    } else if (e.target.classList.contains('buy-note-btn')) {
+        const t = buy.items.find(x => x.id === id);
+        if (t) {
+            const note = prompt('Add note/review:', t.note || '');
+            if (note !== null) { t.note = note; save('buy', buy); renderBuy(); }
+        }
+    }
+});
+
+document.getElementById('addBuyBtn').addEventListener('click', function() {
+    const input = document.getElementById('buyInput');
+    const priceInput = document.getElementById('buyPriceInput');
+    if (!input.value.trim()) return;
+    buy.items.push({ id: Date.now(), text: input.value.trim(), price: priceInput.value.trim(), category: document.getElementById('buyCategory').value, tab: currentBuyTab, done: false, note: '' });
+    save('buy', buy); renderBuy(); renderDashboard(); input.value = ''; priceInput.value = '';
+});
+document.getElementById('buyInput').addEventListener('keypress', function(e) { if (e.key === 'Enter') document.getElementById('addBuyBtn').click(); });
+
+document.getElementById('addBuyCategoryBtn').addEventListener('click', function() {
+    const input = document.getElementById('newBuyCategoryInput');
+    if (!input.value.trim()) return;
+    if (!buy.categories.includes(input.value.trim())) {
+        buy.categories.push(input.value.trim());
+        save('buy', buy); renderBuy();
+    }
+    input.value = '';
+});
+document.getElementById('newBuyCategoryInput').addEventListener('keypress', function(e) { if (e.key === 'Enter') document.getElementById('addBuyCategoryBtn').click(); });
+
 // Inspiration
 function renderInspo() {
     let foldersHtml = folders.map(f =>
@@ -1137,7 +1271,7 @@ document.getElementById('bgColorReset').addEventListener('click', function() {
 });
 document.getElementById('resetBtn').addEventListener('click', function() {
     if (!confirm('Delete ALL data?')) return;
-    ['settings', 'tasks', 'goals', 'habits', 'folders', 'notes', 'books', 'learn'].forEach(k => localStorage.removeItem('d-' + k));
+    ['settings', 'tasks', 'goals', 'habits', 'folders', 'notes', 'books', 'learn', 'buy'].forEach(k => localStorage.removeItem('d-' + k));
     location.reload();
 });
 
