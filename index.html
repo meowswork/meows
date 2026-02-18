@@ -373,12 +373,21 @@
         <div class="page" id="page-learn">
             <div class="page-header"><div class="header-content"><h1 class="page-title">🧠 Learn</h1></div></div>
             <div class="page-content">
+                <div class="tabs" id="learnTabs">
+                    <button class="tab active" data-tab="read">📖 Read</button>
+                    <button class="tab" data-tab="learn">🧠 Learn</button>
+                    <button class="tab" data-tab="do">🛠️ Do</button>
+                </div>
                 <div class="card">
                     <div id="learnContent"></div>
                     <div class="add-row">
-                        <input type="text" class="add-input" id="learnInput" placeholder="Topic or thing to learn...">
-                        <select class="priority-select" id="learnPriority"><option value="high">High</option><option value="medium" selected>Medium</option><option value="low">Low</option></select>
+                        <input type="text" class="add-input" id="learnInput" placeholder="Topic or thing...">
+                        <select class="priority-select" id="learnCategory"></select>
                         <button class="btn btn-primary" id="addLearnBtn">+ Add</button>
+                    </div>
+                    <div class="add-row" style="margin-top:10px;">
+                        <input type="text" class="add-input" id="newCategoryInput" placeholder="New category..." style="max-width:200px;">
+                        <button class="btn" id="addCategoryBtn" style="background:var(--mint);">+ Category</button>
                     </div>
                 </div>
             </div>
@@ -451,7 +460,10 @@ let habits = JSON.parse(localStorage.getItem('d-habits')) || { items: ['Exercise
 let folders = JSON.parse(localStorage.getItem('d-folders')) || [{ id: 'all', name: 'All Images', images: [] }];
 let notes = JSON.parse(localStorage.getItem('d-notes')) || [];
 let books = JSON.parse(localStorage.getItem('d-books')) || { toread: [], reading: [], finished: [] };
-let learn = JSON.parse(localStorage.getItem('d-learn')) || [];
+let learn = JSON.parse(localStorage.getItem('d-learn')) || { categories: ['General'], items: [] };
+if (Array.isArray(learn)) { learn = { categories: ['General'], items: learn.map(l => ({...l, type: 'learn', category: 'General'})) }; save('learn', learn); }
+if (!learn.categories) { learn.categories = ['General']; save('learn', learn); }
+let currentLearnTab = 'read';
 
 let currentTaskTab = 'daily';
 let currentBookTab = 'toread';
@@ -653,15 +665,25 @@ function renderDashboard() {
     }
     document.getElementById('dashBooks').innerHTML = booksHtml || '<p style="color:var(--text-muted);font-size:0.85rem;">No books yet</p>';
     
-    // Learn - active topics
-    const activeLearn = learn.filter(l => !l.done).slice(0, 4);
-    if (activeLearn.length) {
-        document.getElementById('dashLearn').innerHTML = activeLearn.map(l =>
-            '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:0.85rem;"><span style="color:var(--' + l.priority + ')">●</span> ' + esc(l.text) + '</div>'
-        ).join('');
-    } else {
-        document.getElementById('dashLearn').innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Nothing to learn yet</p>';
+    // Learn - active topics by type
+    const activeLearn = learn.items.filter(l => !l.done);
+    const readItems = activeLearn.filter(l => l.type === 'read').slice(0, 2);
+    const learnItems = activeLearn.filter(l => l.type === 'learn').slice(0, 2);
+    const doItems = activeLearn.filter(l => l.type === 'do').slice(0, 2);
+    let learnHtml = '';
+    if (readItems.length) {
+        learnHtml += '<div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:4px;">📖 READ</div>';
+        learnHtml += readItems.map(l => '<div style="padding:4px 0;font-size:0.85rem;">' + esc(l.text) + '</div>').join('');
     }
+    if (learnItems.length) {
+        learnHtml += '<div style="font-size:0.7rem;color:var(--text-muted);margin:6px 0 4px;">🧠 LEARN</div>';
+        learnHtml += learnItems.map(l => '<div style="padding:4px 0;font-size:0.85rem;">' + esc(l.text) + '</div>').join('');
+    }
+    if (doItems.length) {
+        learnHtml += '<div style="font-size:0.7rem;color:var(--text-muted);margin:6px 0 4px;">🛠️ DO</div>';
+        learnHtml += doItems.map(l => '<div style="padding:4px 0;font-size:0.85rem;">' + esc(l.text) + '</div>').join('');
+    }
+    document.getElementById('dashLearn').innerHTML = learnHtml || '<p style="color:var(--text-muted);font-size:0.85rem;">Nothing to learn yet</p>';
 }
 
 // Task Tabs
@@ -859,40 +881,74 @@ document.getElementById('addBookBtn').addEventListener('click', function() {
 document.getElementById('bookTitleInput').addEventListener('keypress', function(e) { if (e.key === 'Enter') document.getElementById('addBookBtn').click(); });
 
 // Learn
+function renderLearnCategories() {
+    const select = document.getElementById('learnCategory');
+    select.innerHTML = learn.categories.map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('');
+}
+
 function renderLearn() {
-    const grouped = { high: [], medium: [], low: [] };
-    learn.forEach(t => grouped[t.priority].push(t));
+    renderLearnCategories();
+    const items = learn.items.filter(t => t.type === currentLearnTab);
+    const grouped = {};
+    learn.categories.forEach(c => grouped[c] = []);
+    items.forEach(t => {
+        if (!grouped[t.category]) grouped[t.category] = [];
+        grouped[t.category].push(t);
+    });
     let html = '';
-    ['high', 'medium', 'low'].forEach(p => {
-        if (grouped[p].length) {
-            html += '<div class="task-section"><div class="priority-header priority-' + p + '">▲ ' + p.toUpperCase() + ' (' + grouped[p].length + ')</div>';
-            grouped[p].forEach(t => {
+    learn.categories.forEach(cat => {
+        if (grouped[cat] && grouped[cat].length) {
+            html += '<div class="task-section"><div class="priority-header" style="background:var(--lavender);">' + esc(cat) + ' (' + grouped[cat].length + ')</div>';
+            grouped[cat].forEach(t => {
                 html += '<div class="task-item' + (t.done ? ' done' : '') + '" data-id="' + t.id + '"><div class="task-checkbox' + (t.done ? ' checked' : '') + '">' + (t.done ? '✓' : '') + '</div><div class="task-content"><div class="task-text">' + esc(t.text) + '</div></div><button class="task-delete">×</button></div>';
             });
             html += '</div>';
         }
     });
-    document.getElementById('learnContent').innerHTML = html || '<p style="color:var(--text-muted);text-align:center;padding:30px;">Nothing to learn yet</p>';
+    const tabLabels = { read: 'read', learn: 'learn', do: 'do' };
+    document.getElementById('learnContent').innerHTML = html || '<p style="color:var(--text-muted);text-align:center;padding:30px;">Nothing to ' + tabLabels[currentLearnTab] + ' yet</p>';
 }
+
+document.getElementById('learnTabs').addEventListener('click', function(e) {
+    if (e.target.classList.contains('tab')) {
+        currentLearnTab = e.target.dataset.tab;
+        document.querySelectorAll('#learnTabs .tab').forEach(t => t.classList.remove('active'));
+        e.target.classList.add('active');
+        renderLearn();
+    }
+});
+
 document.getElementById('learnContent').addEventListener('click', function(e) {
     const item = e.target.closest('.task-item');
     if (!item) return;
     const id = parseInt(item.dataset.id);
     if (e.target.classList.contains('task-checkbox')) {
-        const t = learn.find(x => x.id === id);
+        const t = learn.items.find(x => x.id === id);
         if (t) { t.done = !t.done; save('learn', learn); renderLearn(); renderDashboard(); }
     } else if (e.target.classList.contains('task-delete')) {
-        learn = learn.filter(x => x.id !== id);
+        learn.items = learn.items.filter(x => x.id !== id);
         save('learn', learn); renderLearn(); renderDashboard();
     }
 });
+
 document.getElementById('addLearnBtn').addEventListener('click', function() {
     const input = document.getElementById('learnInput');
     if (!input.value.trim()) return;
-    learn.push({ id: Date.now(), text: input.value.trim(), priority: document.getElementById('learnPriority').value, done: false });
+    learn.items.push({ id: Date.now(), text: input.value.trim(), category: document.getElementById('learnCategory').value, type: currentLearnTab, done: false });
     save('learn', learn); renderLearn(); renderDashboard(); input.value = '';
 });
 document.getElementById('learnInput').addEventListener('keypress', function(e) { if (e.key === 'Enter') document.getElementById('addLearnBtn').click(); });
+
+document.getElementById('addCategoryBtn').addEventListener('click', function() {
+    const input = document.getElementById('newCategoryInput');
+    if (!input.value.trim()) return;
+    if (!learn.categories.includes(input.value.trim())) {
+        learn.categories.push(input.value.trim());
+        save('learn', learn); renderLearn();
+    }
+    input.value = '';
+});
+document.getElementById('newCategoryInput').addEventListener('keypress', function(e) { if (e.key === 'Enter') document.getElementById('addCategoryBtn').click(); });
 
 // Inspiration
 function renderInspo() {
